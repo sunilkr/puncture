@@ -1,134 +1,189 @@
 #!/usr/bin/env ruby
 
-class Image
-   
-   attr_accessor :name, :path, :base, :size, :oep
-   
-   def initialize(path, base, size, oep)
-      @path, @base, @size, @ope = path, size, base, oep
-      @name = File.basename(@path)
-   end
+DEBUG = 1
 
-   def add_method(method)
-      @methods ||= {}
-      @methods[method.name] = method
-   end
+class AppImage
+  attr_accessor :name, :path, :base, :size, :oep
+  def initialize(path, base, size, oep)
+    @path, @base, @size, @oep = path, size, base, oep
+    @name = File.basename(@path).upcase
+  end
+
+  def add_method(method)
+    @methods ||= {}
+    @methods[method.name] = method
+  end
+
+  def to_stdout
+    str = "Image: #{@name} [Base Address: #{@base}, MappeSize: #{@size}, Entry Point: #{@oep}]\n"
+    str += "\tPath: #{@path}\n"
+    if @methods
+      str += "\tMethods: \n"
+      @methods.each_pair { |name,method| str += "\t\t#{method.address} => #{name} \n"}
+    end
+    str += "\n"
+  end
 end
 
-class Method
-   
-   attr_accessor :name, :address, :count, :calls
+class AppMethod
+  attr_accessor :name, :address, :count, :calls
+  def initialize( name, address )
+    @name, @address = name, address
+    @count = 0
+    @calls = []
+  end
 
-   def initialize( name, address )
-      @name, @address = name, address
-      @call_count = 0
-      @calls = []
-   end
+  def called( call )
+    @count += 1
+    @calls<< call
+  end
 
-   def called( call )
-      @call_count += 1
-      @calls<< call
-   end
-
+  def to_stdout
+    str = "#{@name} #{@count}\n"
+  end
 end
 
-class Thread
+class AppThread
+  attr_reader :methods, :id
+  def initialize( id )
+    @id = id
+    @methods = {}
+  end
 
-   attr_reader :methods, :id
-   
-   def initialize( id )
-      @id = id
-      @methods = {}
-   end
+  def called(call)
+    @methods[call.name] ||= []
+    @methods[call.name]<< call
+  end
 
-   def called(call)
-      @methods[call.name] ||= []
-      @methods[call.name]<< call
-   end
-
+  def to_stdout
+    str = "Thread: #{@id}\n"
+    str += "\tCalled:"
+    @methods.each_key { |name| str += "\t\t #{name}\n"}
+    str += "\n"
+  end
 end
 
-def MethodCall
-   
-   attr_accessor :name, :arguments, :thread, :ret
+class AppCall
+  attr_accessor :name, :arguments, :thread, :ret
+  def initialize( name, arguments, thread)
+    @name, @arguments, @thread = name, arguments, thread
+    @ret = nil
+  end
 
-   def initialize( name, arguments, thread)
-      @name, @arguments, @thread = name, arguments, thread
-      @ret = nil
-   end
+  def returned( values)
+    @ret = values
+  end
 
-   def returned( values)
-      @ret = values
-   end
+  def to_stdout
+    str = "#{@name}\n"
+    str += "\tThread: #{@thread.id}\n"
+    if @arguments.size > 0
+      str += "\tInput Parameters: #{@arguments.to_s}\n"
+    end
+    if @ret.size>0
+      str += "\t Returned: #{@ret.to_s}\n"
+    end
+    str += "\n"
+  end
 end
 
 class Parser
-   
-   DELIM = '|'
+  DELIM = '|'
+  def initialize( source)
+    @src = source
+    @threads = {}
+    @images = {}
+    @methods = {}
+    @calls = {}
+    @last_call = {}
+  end
 
-   def initialize( source) 
-      @src = source
-      @threads = {}
-      @images = {}
-      @methods = {}
-      @calls = {}
-      @last_call = {}
-   end
+  def onImage( data )
+    parts = data.split(DELIM)
+    path = parts[1]
+    base = parts[2].split('@')[1]
+    size = parts[3].split('@')[1]
+    oep = parts[4].split('@')[1]
 
-   def onImage( data )
-      parts = data.split(DELIM)
-      path = parts[1]
-      base = parts[2].split('@')[1]
-      size = parts[3].split('@')[1]
-      oep = parts[4].split('@')[1]
+    img = AppImage.new(path, base, size, oep)
+ #   puts "[?] added image #{img.name}"
+    @images[img.name] = img
+  end
 
-      img = Image.new(path, base, size, oep)
-      @images[img.name] = img
-   end
-   
-   def onThread( data )
-      thr, fn_name, event, params = data.split(DELIM)
-      th_id = thr.split('=')[1].to_i(16)
-      
-      @threads[th_id] = Thread.new(th_id)
+  def onThread( data )
+    thr, fn_name, event, *params = data.split(DELIM)
+    th_id = thr.split('=')[1].to_i(16)
 
-      case event
-      
-      when 'CALL'
-         @last_call[th_id] = MethodCall.new(fn_name, __params_hash(params), @threads[th_id])
+    @threads[th_id] = AppThread.new(th_id)
 
-      when 'RETN'
-         if @last_call[th_id].ret != nil
-            puts "[!] Unexpected #{data}" 
-         else
-            @last_call[th_id].returned( __params_hash(params) )
-            @threads[th_id].called( @last_call )
-         end
+    case event
+
+    when 'CALL'
+      @last_call[th_id] = AppCall.new(fn_name, __params_hash(params), @threads[th_id])
+
+    when 'RETN'
+      if @last_call[th_id].ret != nil
+        puts "[!] Unexpected #{data}"
+      else
+        @last_call[th_id].returned( __params_hash(params) )
+        @threads[th_id].called( @last_call[th_id] )
       end
-   end
+    end
+  end
 
-   def __params_hash( params )
-      params = [params] if params.is_a?(String)
-      return nil if not params.is_a?(Array)
+  def __params_hash( params )
+    params = [params] if params.is_a?(String)
+    return nil if not params.is_a?(Array)
+    #    puts params.inspect if DEBUG == 1
+    args = {}
+    params.each do |param|
+      next unless param.include?('=')
+      name,value = param.split('=')
+      args[name] = value
+    end
 
-      args = {}
-      params.each do |param| 
-         name,value = params.split('=')
-         args[name] = value
+    return args
+  end
+
+  def onSymbol( data )
+#    puts data.inspect
+    img, fn_name, addr = data.split(DELIM)
+    method = AppMethod.new(fn_name,addr.split('@')[1])
+
+    if @images.key?(img)
+      @images[img].add_method(method)
+    else
+      puts "[!] Missing Image #{img} with Method #{fn_name}"
+    end
+
+    @methods[method.name] = method
+  end
+
+  def parse
+    File.open(@src,"r") do |file|
+      while line = file.gets
+        next if line.strip.size == 0 or line.start_with?( "[*]Done" )
+#        puts line if DEBUG == 1
+        if line.match(/^Image*/)
+          onImage( line.strip )
+        elsif line.match(/^Thread*/)
+          onThread( line.strip )
+        else
+          onSymbol( line.strip ) #unless line.match (  )
+        end
       end
+    end
 
-      return args
-   end
+    return self
+  end
 
-   def onSymbol( data )
-      img, fn_name, addr = data.split(DELIM)
+  def result
+    puts "[*] #{@images.size} Loaded Images...\n"
+    @images.each_value {|img| puts img.to_stdout}
+  end
+end
 
-      method = Method.new(fn_name,addr.split('@')[1])
-      (@images.has_key(img))?@images[img].add_method(method): puts "[!] Missing Image #{img} with Method #{fn_name}"
-      @methods[method.name] = method
-   end
-
-   def parse
-      
-   end
+if $0 == __FILE__
+  parser = Parser.new("E:\\GitRepos\\Github\\puncture\\LogFile.txt").parse
+  parser.result
 end
