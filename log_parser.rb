@@ -6,7 +6,7 @@ class AppImage
   attr_accessor :name, :path, :base, :size, :oep
   def initialize(path, base, size, oep)
     @path, @base, @size, @oep = path, size, base, oep
-    @name = File.basename(@path).upcase
+    @name = @path[@path.rindex('\\')+1..-1].upcase
   end
 
   def add_method(method)
@@ -40,11 +40,15 @@ class AppMethod
 
   def to_stdout
     str = "#{@name} #{@count}\n"
+    str += "\t Calls: \n"
+    @calls.each { |call| str += call.to_stdout}
+    str += "\n"
   end
 end
 
 class AppThread
   attr_reader :methods, :id
+  
   def initialize( id )
     @id = id
     @methods = {}
@@ -56,9 +60,9 @@ class AppThread
   end
 
   def to_stdout
-    str = "Thread: #{@id}\n"
-    str += "\tCalled:"
-    @methods.each_key { |name| str += "\t\t #{name}\n"}
+    str = "Thread: 0x#{@id.to_s(16)}\n"
+    str += "\tCalled:\n"
+    @methods.each_key { |name| str += "\t #{name}\n"}
     str += "\n"
   end
 end
@@ -76,11 +80,11 @@ class AppCall
 
   def to_stdout
     str = "#{@name}\n"
-    str += "\tThread: #{@thread.id}\n"
-    if @arguments.size > 0
+    str += "\tThread: 0x#{@thread.id.to_s(16)}\n"
+    if @arguments && @arguments.size > 0
       str += "\tInput Parameters: #{@arguments.to_s}\n"
     end
-    if @ret.size>0
+    if @ret && @ret.size>0
       str += "\t Returned: #{@ret.to_s}\n"
     end
     str += "\n"
@@ -94,7 +98,7 @@ class Parser
     @threads = {}
     @images = {}
     @methods = {}
-    @calls = {}
+    @calls = []
     @last_call = {}
   end
 
@@ -120,7 +124,8 @@ class Parser
 
     when 'CALL'
       @last_call[th_id] = AppCall.new(fn_name, __params_hash(params), @threads[th_id])
-
+      @calls<< @last_call[th_id]
+      @methods[@last_call[th_id].name].called( @last_call[th_id] ) if @methods[@last_call[th_id].name]
     when 'RETN'
       if @last_call[th_id].ret != nil
         puts "[!] Unexpected #{data}"
@@ -178,8 +183,13 @@ class Parser
   end
 
   def result
-    puts "[*] #{@images.size} Loaded Images...\n"
-    @images.each_value {|img| puts img.to_stdout}
+#    puts "[*] #{@images.size} Loaded Images...\n"
+#    @images.each_value {|img| puts img.to_stdout}
+    puts "[*] Threads #{@threads.size}"
+    @threads.each_value {|th| puts th.to_stdout}
+    #puts "[*] Calls #{@calls.size}"
+    puts "[*] Methods #{@methods.size}"
+    @methods.each_value { |method| puts method.to_stdout}
   end
 end
 
