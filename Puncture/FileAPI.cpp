@@ -1,7 +1,8 @@
 #include"pintool.h"
 
 extern std::wofstream		wLogFile;
-extern std::wostringstream	wStringStream;
+extern PIN_LOCK logFileLock;
+//extern std::wostringstream	wStringStream;
 extern int iExpect[MAX_THREAD];
 
 WINDOWS::HANDLE jwCreateFileW(CONTEXT *ctxt, AFUNPTR fpOrigin, WINDOWS::LPWSTR lpFileName, 
@@ -10,6 +11,8 @@ WINDOWS::HANDLE jwCreateFileW(CONTEXT *ctxt, AFUNPTR fpOrigin, WINDOWS::LPWSTR l
 							  WINDOWS::DWORD dwFlagsAndAttributes, WINDOWS::HANDLE hTemplateFile)
 {
 	WINDOWS::HANDLE hFile = 0;
+	std::wostringstream wStringStream;
+
 	wStringStream<<"Thread="<<hex<<PIN_GetTid()
 					<<DELIM<<"CreateFileW"
 					<<DELIM<<"CALL"
@@ -26,14 +29,15 @@ WINDOWS::HANDLE jwCreateFileW(CONTEXT *ctxt, AFUNPTR fpOrigin, WINDOWS::LPWSTR l
 		PIN_PARG(WINDOWS::DWORD), dwCreationDisposition, PIN_PARG(WINDOWS::DWORD), dwFlagsAndAttributes,
 		PIN_PARG(WINDOWS::HANDLE), hTemplateFile, PIN_PARG_END());
 
+	GetLock(&logFileLock, PIN_GetTid());
 	wLogFile<<wStringStream.str()
 			<<"Thread="<<hex<<PIN_GetTid()
 			<<DELIM<<"CreateFileW"
 			<<DELIM<<"RETN"
 			<<DELIM<<"Value="<<hex<<hFile
-			<<DELIM<<dec<<endl;
+			<<dec<<endl;
 	wLogFile.flush();
-	wStringStream.str(L"");
+	ReleaseLock(&logFileLock);
 	return hFile;
 }
 
@@ -41,6 +45,8 @@ void b4CreateFile(const char Code, UINT32 lpFileName, WINDOWS::DWORD dwDesiredAc
 				  WINDOWS::DWORD dwShareMode, WINDOWS::LPSECURITY_ATTRIBUTES lpSecurityAttributes,
 				  WINDOWS::DWORD dwCreationDisposition, WINDOWS::DWORD dwFlagsAndAttributes)
 {
+	std::wostringstream wStringStream;
+
 	iExpect[PIN_ThreadId()] = CREATE_FILE;
 	wStringStream<<"Thread="<<hex<<PIN_GetTid()
 					<<DELIM<<"CreateFile"<<Code
@@ -50,18 +56,23 @@ void b4CreateFile(const char Code, UINT32 lpFileName, WINDOWS::DWORD dwDesiredAc
 		wStringStream<<(WINDOWS::LPCSTR)lpFileName;
 	else
 		wStringStream<<(WINDOWS::LPWSTR)lpFileName;
+
+	GetLock(&logFileLock, PIN_GetTid());
 	wLogFile<<wStringStream.str()
-					<<DELIM<<"dwDesiredAccess="<<hex<<dwDesiredAccess
-					<<DELIM<<"dwShareMode="<<hex<<dwShareMode
-					<<DELIM<<"dwCreationDisposition="<<dwCreationDisposition
-					<<DELIM<<"dwFlagsAndAttributes="<<dwFlagsAndAttributes
-					<<DELIM<<dec<<endl;
-	wLogFile.flush();
-	wStringStream.str(L"");
+		<<DELIM<<"dwDesiredAccess="<<hex<<dwDesiredAccess
+		<<DELIM<<"dwShareMode="<<hex<<dwShareMode
+		<<DELIM<<"dwCreationDisposition="<<dwCreationDisposition
+		<<DELIM<<"dwFlagsAndAttributes="<<dwFlagsAndAttributes
+		<<dec<<endl;
+	wLogFile.flush();	
+	ReleaseLock(&logFileLock);
+	//wStringStream.str(L"");
 }
 
 void b4DeleteFile(const char Code, UINT32 lpFileName)
 {
+	std::wostringstream wStringStream;
+
 	iExpect[PIN_ThreadId()] = DELETE_FILE;
 	wStringStream<<"Thread="<<hex<<PIN_GetTid()
 					<<DELIM<<"DeleteFile"<<Code
@@ -71,48 +82,65 @@ void b4DeleteFile(const char Code, UINT32 lpFileName)
 		wStringStream<<(WINDOWS::LPCSTR)lpFileName;
 	else
 		wStringStream<<(WINDOWS::LPWSTR)lpFileName;
+
+	GetLock(&logFileLock, PIN_GetTid());
 	wLogFile<<wStringStream.str()<<dec<<endl;
 	wLogFile.flush();
-	wStringStream.str(L"");
+	ReleaseLock(&logFileLock);
+	//wStringStream.str(L"");
 }
 
 void b4ReadFile(const WINDOWS::BOOL isEx, WINDOWS::HANDLE hFile)
 {
+	std::wostringstream wStringStream;
+
 	iExpect[PIN_ThreadId()] = READ_FILE;
 
-	wLogFile<<"Thread="<<hex<<PIN_GetTid()
+	wStringStream<<"Thread="<<hex<<PIN_GetTid()
 			<<DELIM<<"ReadFile";
 	if(isEx)
-		wLogFile<<"Ex";
-	wLogFile<<DELIM<<"CALL"
-			<<DELIM<<"hFile="<<hex<<hFile
-			<<dec<<endl;
+		wStringStream<<"Ex";
+
+	wStringStream<<DELIM<<"CALL"
+			<<DELIM<<"hFile="<<hex<<hFile;
+
+	GetLock(&logFileLock, PIN_GetTid());
+	wLogFile<<wStringStream.str()<<dec<<endl;
 	wLogFile.flush();
+	ReleaseLock(&logFileLock);
 }
 
 void b4WriteFile(const WINDOWS::BOOL isEx, WINDOWS::HANDLE hFile)
 {
+	std::wostringstream wStringStream;
+
 	iExpect[PIN_ThreadId()] = WRITE_FILE;
 
-	wLogFile<<"Thread="<<hex<<PIN_GetTid()
+	wStringStream<<"Thread="<<hex<<PIN_GetTid()
 		<<DELIM<<"WriteFile";
 	if(isEx)
-		wLogFile<<"Ex";	   
-	wLogFile<<DELIM<<"CALL"
-			<<DELIM<<"hFile="<<hex<<hFile
-			<<dec<<endl;
+		wStringStream<<"Ex";	   
+	wStringStream<<DELIM<<"CALL"
+			<<DELIM<<"hFile="<<hex<<hFile;
+
+	GetLock(&logFileLock, PIN_GetTid());
+	wLogFile<<wStringStream.str()<<dec<<endl;
 	wLogFile.flush();
+	ReleaseLock(&logFileLock);
 }
 
 void b4SetFilePointer(const WINDOWS::BOOL isEx, WINDOWS::HANDLE hFile, 
 					  WINDOWS::LONG lDistanceToMove, WINDOWS::DWORD dwMoveMethod)
 {
+	std::wostringstream wStringStream;
+
 	iExpect[PIN_ThreadId()]=SETFILE_PTR;
 
 	wStringStream<<"Thread="<<hex<<PIN_GetTid()
 					<<DELIM<<"SetFilePointer";
 	if(isEx)
 		wStringStream<<"Ex";
+	GetLock(&logFileLock, PIN_GetTid());
 	wLogFile<<wStringStream.str()
 			<<DELIM<<"CALL"
 			<<DELIM<<"hFile="<<hex<<hFile
@@ -120,22 +148,29 @@ void b4SetFilePointer(const WINDOWS::BOOL isEx, WINDOWS::HANDLE hFile,
 			<<DELIM<<"dwMoveMethod="<<dwMoveMethod
 			<<dec<<endl;
 	wLogFile.flush();
-	wStringStream.str(L"");
+	wLogFile.flush();
+	ReleaseLock(&logFileLock);
+	//wStringStream.str(L"");
 }
 
 //Ovlerlapping Handles
 void b4CloseHandle(WINDOWS::HANDLE hObject)
 {
+	//std::wostringstream wStringStream;
+	GetLock(&logFileLock, PIN_GetTid());
 	wLogFile<<"Thread="<<hex<<PIN_GetTid()
 			<<DELIM<<"CloseHandle"
 			<<DELIM<<"CALL"
 			<<DELIM<<"hObject="<<hex<<hObject
 			<<dec<<endl;
 	wLogFile.flush();
+	ReleaseLock(&logFileLock);
 }
 	
 void OnFileReturn(const int fCode, const char Code, UINT32 lResult)
 {
+	std::wostringstream wStringStream;
+
 	if(fCode != iExpect[PIN_ThreadId()])
 		return;
 	iExpect[PIN_ThreadId()]=0;
@@ -173,7 +208,9 @@ void OnFileReturn(const int fCode, const char Code, UINT32 lResult)
 			wStringStream<<"Ex";
 		wStringStream<<DELIM<<"RETN"<<DELIM<<"Value="<<hex<<(WINDOWS::BOOL)lResult;
 	}
+
+	GetLock(&logFileLock, PIN_GetTid());
 	wLogFile<<wStringStream.str()<<dec<<endl;
 	wLogFile.flush();
-	wStringStream.str(L"");	
+	ReleaseLock(&logFileLock);
 }

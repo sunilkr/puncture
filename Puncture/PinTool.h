@@ -1,7 +1,11 @@
+#ifndef __PINTOOL_H_
+#define __PINTOOL_H_
+
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <pin.H>
+
 namespace WINDOWS
 {
 #define WIN32_LEAN_AND_MEAN
@@ -23,7 +27,6 @@ namespace WINDOWS
 #define SETFILE_PTR 0x6
 #define WRITE_FILE	0x7
 #define READ_FILE	0x8
-
 
 void Image(IMG img, void *v);
 void Fini(INT32 code, void *v);
@@ -95,3 +98,5 @@ void afterConnect(int iResult);
 void b4Socket(int af, int type, int protocol);
 void afterSocket(WINDOWS::SOCKET socket);
 WINDOWS::SOCKET jwSocket(CONTEXT *ctxt, AFUNPTR fpOrigin, int af, int type, int protocol); 
+
+#endif

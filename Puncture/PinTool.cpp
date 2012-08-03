@@ -2,8 +2,9 @@
 #include <string.h>
 
 std::wofstream		wLogFile;
-std::wostringstream wStringStream;
+//std::wostringstream wStringStream;
 int	iExpect[MAX_THREAD];
+PIN_LOCK logFileLock;
 
 int main(int argc, char *argv[])
 {
@@ -14,6 +15,8 @@ int main(int argc, char *argv[])
 	wLogFile.open("LogFile.txt");
 	wLogFile<<hex;
 	wLogFile.setf(ios::showbase);
+
+	InitLock(&logFileLock);
 
 	IMG_AddInstrumentFunction(Image, 0);
 	PIN_AddFiniFunction(Fini,0);

@@ -1,7 +1,8 @@
 #include"pintool.h"
 
 extern std::wofstream		wLogFile;
-extern std::wostringstream wStringStream;
+extern PIN_LOCK logFileLock;
+//extern std::wostringstream	wStringStream;
 extern int iExpect[MAX_THREAD];
 
 WINDOWS::LONG jwRegCreateKeyEx(const char Code, CONTEXT *ctxt, AFUNPTR fpOrigin, 
@@ -12,6 +13,7 @@ WINDOWS::LONG jwRegCreateKeyEx(const char Code, CONTEXT *ctxt, AFUNPTR fpOrigin,
 							   WINDOWS::PHKEY phkResult, WINDOWS::LPDWORD lpdwDisposition)
 {
 	WINDOWS::LONG Result = 0;
+	std::wostringstream wStringStream;
 	wStringStream<<"Thread="<<hex<<PIN_GetTid()
 					<<DELIM<<"RegCreateKeyEx"<<Code
 					<<DELIM<<"CALL"
@@ -62,11 +64,15 @@ WINDOWS::LONG jwRegCreateKeyEx(const char Code, CONTEXT *ctxt, AFUNPTR fpOrigin,
 					<<DELIM<<"RegCreateKeyEx"<<Code
 					<<DELIM<<"RETN"
 					<<DELIM<<"Value="<<hex<<Result;
+
 	if(ERROR_SUCCESS == Result)
 		wStringStream<<DELIM<<"phkResult="<<hex<<*phkResult;
-	wLogFile<<wStringStream.str()<<DELIM<<dec<<endl;
+
+	GetLock(&logFileLock, PIN_GetTid());
+	wLogFile<<wStringStream.str()<<dec<<endl;
 	wLogFile.flush();
-	wStringStream.str(L"");
+	ReleaseLock(&logFileLock);
+	//wStringStream.str(L"");
 	return Result;
 }
 
@@ -75,6 +81,8 @@ WINDOWS::LONG jwRegOpenKeyEx(const char Code, CONTEXT *ctxt, AFUNPTR fpOrigin,
 							 WINDOWS::REGSAM samDesired, WINDOWS::PHKEY phkResult)
 {
 	WINDOWS::LONG Result=0;
+	std::wostringstream wStringStream;
+
 	wStringStream<<"Thread="<<hex<<PIN_GetTid()
 					<<DELIM<<"RegOpenKeyEx"<<Code
 					<<DELIM<<"CALL"
@@ -122,14 +130,18 @@ WINDOWS::LONG jwRegOpenKeyEx(const char Code, CONTEXT *ctxt, AFUNPTR fpOrigin,
 	if(ERROR_SUCCESS == Result)
 		wStringStream<<DELIM<<"phkResult="<<hex<<*phkResult;
 	
-	wLogFile<<wStringStream.str()<<DELIM<<dec<<endl;
+	GetLock(&logFileLock, PIN_GetTid());
+	wLogFile<<wStringStream.str()<<dec<<endl;
 	wLogFile.flush();
-	wStringStream.str(L"");
+	ReleaseLock(&logFileLock);
+	//wStringStream.str(L"");
 	return Result;
 }
 
 void b4RegQueryValueEx(const char Code, WINDOWS::HKEY hKey, UINT32 lpValueName)
 {
+	std::wostringstream wStringStream;
+
 	iExpect[PIN_ThreadId()] = REG_QVALUE;
 
 	wStringStream<<"Thread="<<hex<<PIN_GetTid()
@@ -149,13 +161,17 @@ void b4RegQueryValueEx(const char Code, WINDOWS::HKEY hKey, UINT32 lpValueName)
 	else
 		wStringStream<<DELIM<<"lpValueName=Default";
 
-	wLogFile<<wStringStream.str()<<DELIM<<dec<<endl;
+	GetLock(&logFileLock, PIN_GetTid());
+	wLogFile<<wStringStream.str()<<dec<<endl;
 	wLogFile.flush();
-	wStringStream.str(L"");
+	ReleaseLock(&logFileLock);
+	//wStringStream.str(L"");
 }
 
 void b4RegDeleteKeyEx(const char Code, WINDOWS::HKEY hKey, UINT32 lpSubKey)
 {
+	std::wostringstream wStringStream;
+
 	iExpect[PIN_ThreadId()] = REG_DELKEY;
 	wStringStream<<"Thread="<<hex<<PIN_GetTid()
 					<<DELIM<<"RegDeleteKeyEx"<<Code
@@ -173,9 +189,12 @@ void b4RegDeleteKeyEx(const char Code, WINDOWS::HKEY hKey, UINT32 lpSubKey)
 	}
 	else
 		wStringStream<<DELIM<<"lpSubKey=Default";
-	wLogFile<<wStringStream.str()<<DELIM<<dec<<endl;
+
+	GetLock(&logFileLock, PIN_GetTid());
+	wLogFile<<wStringStream.str()<<dec<<endl;
 	wLogFile.flush();
-	wStringStream.str(L"");
+	ReleaseLock(&logFileLock);
+	//wStringStream.str(L"");
 }
 
 void b4RegSetValueEx(const char Code, WINDOWS::HKEY hKey, UINT32 lpValueName, WINDOWS::DWORD dwType,
@@ -184,6 +203,7 @@ void b4RegSetValueEx(const char Code, WINDOWS::HKEY hKey, UINT32 lpValueName, WI
 	WINDOWS::LPCTSTR lpctTemp;
 	WINDOWS::LPWSTR lpwTemp;
 	WINDOWS::DWORD dwOffset=0;
+	std::wostringstream wStringStream;
 
 	iExpect[PIN_ThreadId()] = REG_SETVAL;
 	wStringStream<<"Thread="<<hex<<PIN_GetTid()
@@ -251,13 +271,18 @@ void b4RegSetValueEx(const char Code, WINDOWS::HKEY hKey, UINT32 lpValueName, WI
 		for(WINDOWS::DWORD i = 0; i<cbData; i++)
 			wStringStream<<*(lpData+i);
 	}
-	wLogFile<<wStringStream.str()<<DELIM<<dec<<endl;
+
+	GetLock(&logFileLock, PIN_GetTid());
+	wLogFile<<wStringStream.str()<<dec<<endl;
 	wLogFile.flush();
-	wStringStream.str(L"");
+	ReleaseLock(&logFileLock);
+	//wStringStream.str(L"");
 }
 
 void OnRegReturn(int funcCode, const char Code, WINDOWS::LONG lResult)
 {
+	std::wostringstream wStringStream;
+
 	if(iExpect[PIN_ThreadId()]!=funcCode)
 		return;
 	iExpect[PIN_ThreadId()] = 0;
@@ -271,8 +296,11 @@ void OnRegReturn(int funcCode, const char Code, WINDOWS::LONG lResult)
 		break;
 	case REG_DELKEY: wStringStream<<DELIM<<"RegDeleteKeyEx"<<Code;
 	}
-	wStringStream<<DELIM<<"RETN"<<DELIM<<"Value="<<hex<<lResult<<DELIM<<dec<<endl;
-	wLogFile<<wStringStream.str();
+	wStringStream<<DELIM<<"RETN"<<DELIM<<"Value="<<hex<<lResult;
+	
+	GetLock(&logFileLock, PIN_GetTid());
+	wLogFile<<wStringStream.str()<<dec<<endl;
 	wLogFile.flush();
-	wStringStream.str(L"");
+	ReleaseLock(&logFileLock);
+	//wStringStream.str(L"");
 }
