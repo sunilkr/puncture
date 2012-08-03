@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 
 DEBUG = 1
+LOG_FILE = "LogFile.txt"
 
 class AppImage
   attr_accessor :name, :path, :base, :size, :oep
@@ -51,18 +52,20 @@ class AppThread
   
   def initialize( id )
     @id = id
-    @methods = {}
+#    @methods = {}
+    @fn = []
   end
 
   def called(call)
-    @methods[call.name] ||= []
-    @methods[call.name]<< call
+#    ( @methods[call.name] ||= [] ) << call
+    @fn << call.dup
   end
 
   def to_stdout
     str = "Thread: 0x#{@id.to_s(16)}\n"
     str += "\tCalled:\n"
-    @methods.each_key { |name| str += "\t #{name}\n"}
+#    @methods.each_key { |name| str += "\t #{name}\n"}
+    @fn.each { |call| str += call.to_stdout}
     str += "\n"
   end
 end
@@ -123,15 +126,16 @@ class Parser
     case event
 
     when 'CALL'
-      @last_call[th_id] = AppCall.new(fn_name, __params_hash(params), @threads[th_id])
-      @calls<< @last_call[th_id]
-      @methods[@last_call[th_id].name].called( @last_call[th_id] ) if @methods[@last_call[th_id].name]
+      call = AppCall.new(fn_name, __params_hash(params), @threads[th_id])
+      @last_call[th_id] = call
+      @calls<< call
+      @methods[call.name].called( call ) if @methods[call.name]
     when 'RETN'
       if @last_call[th_id].ret != nil
         puts "[!] Unexpected #{data}"
       else
         @last_call[th_id].returned( __params_hash(params) )
-        @threads[th_id].called( @last_call[th_id] )
+        @threads[th_id].called( @last_call[th_id].dup )
       end
     end
   end
@@ -188,12 +192,12 @@ class Parser
     puts "[*] Threads #{@threads.size}"
     @threads.each_value {|th| puts th.to_stdout}
     #puts "[*] Calls #{@calls.size}"
-    puts "[*] Methods #{@methods.size}"
-    @methods.each_value { |method| puts method.to_stdout}
+#    puts "[*] Methods #{@methods.size}"
+#    @methods.each_value { |method| puts method.to_stdout}
   end
 end
 
 if $0 == __FILE__
-  parser = Parser.new("E:\\GitRepos\\Github\\puncture\\LogFile.txt").parse
+  parser = Parser.new(LOG_FILE).parse
   parser.result
 end
