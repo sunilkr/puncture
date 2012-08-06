@@ -1,7 +1,5 @@
 #!/usr/bin/env ruby
-
-DEBUG = 1
-LOG_FILE = "LogFile.txt"
+require 'config'
 
 class AppImage
   attr_accessor :name, :path, :base, :size, :oep
@@ -24,6 +22,19 @@ class AppImage
     end
     str += "\n"
   end
+  
+  def to_xml
+    str = "<image name=\"#{@name}\">\n"
+    str += "<path>#{@path}</path>\n"
+    str += "<base>#{@base}</base>\n"
+    str += "<mapped-size>#{@size}</mapped-size>\n"
+    str += "<entry-point>#{@oep}</entry-point>\n"
+    if @methods
+      str += "<methods>"
+      @methods.each_pair { |name,method| str += "<method addres=\"#{method.address}\">#{@name}</method>\n"}
+      str += "</methods>"
+    end
+    str += "</image>"
 end
 
 class AppMethod
@@ -45,6 +56,11 @@ class AppMethod
     @calls.each { |call| str += call.to_stdout}
     str += "\n"
   end
+  
+  def to_xml
+    str = "<method>"
+    
+  end
 end
 
 class AppThread
@@ -52,20 +68,19 @@ class AppThread
   
   def initialize( id )
     @id = id
-#    @methods = {}
-    @fn = []
+    @methods = []
   end
 
-  def called(call)
+  def called( call )
 #    ( @methods[call.name] ||= [] ) << call
-    @fn << call.dup
+    @methods << call
   end
 
   def to_stdout
     str = "Thread: 0x#{@id.to_s(16)}\n"
     str += "\tCalled:\n"
 #    @methods.each_key { |name| str += "\t #{name}\n"}
-    @fn.each { |call| str += call.to_stdout}
+    @methods.each { |call| str += call.to_stdout}
     str += "\n"
   end
 end
@@ -156,7 +171,7 @@ class Parser
 
   def onSymbol( data )
 #    puts data.inspect
-    img, fn_name, addr = data.split(DELIM)
+    cmd, img, fn_name, addr = data.split(DELIM)
     method = AppMethod.new(fn_name,addr.split('@')[1])
 
     if @images.key?(img)
@@ -177,7 +192,7 @@ class Parser
           onImage( line.strip )
         elsif line.match(/^Thread*/)
           onThread( line.strip )
-        else
+        elsif line.match(/^SYMBOL*/)
           onSymbol( line.strip ) #unless line.match (  )
         end
       end
@@ -198,6 +213,6 @@ class Parser
 end
 
 if $0 == __FILE__
-  parser = Parser.new(LOG_FILE).parse
+  parser = Parser.new($config['LOG_FILE']).parse
   parser.result
 end
