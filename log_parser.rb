@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-require './config'
+require 'config'
 
 class AppImage
   
@@ -158,7 +158,7 @@ class Parser
     @last_call = {}
   end
 
-  def onImage( data )
+  def on_image( data )
     parts = data.split(DELIM)
     path = parts[1]
     base = parts[2].split('@')[1]
@@ -166,11 +166,10 @@ class Parser
     oep = parts[4].split('@')[1]
 
     img = AppImage.new(path, base, size, oep)
- #   puts "[?] added image #{img.name}"
     @images[img.name] = img
   end
 
-  def onThread( data )
+  def on_thread( data )
     thr, fn_name, event, *params = data.split(DELIM)
     th_id = thr.split('=')[1].to_i(16)
 
@@ -196,7 +195,6 @@ class Parser
   def __params_hash( params )
     params = [params] if params.is_a?(String)
     return nil if not params.is_a?(Array)
-    #    puts params.inspect if DEBUG == 1
     args = {}
     params.each do |param|
       next unless param.include?('=')
@@ -207,8 +205,7 @@ class Parser
     return args
   end
 
-  def onSymbol( data )
-#    puts data.inspect
+  def on_symbol( data )
     cmd, img, fn_name, addr = data.split(DELIM)
     method = AppMethod.new(fn_name,addr.split('@')[1])
 
@@ -225,13 +222,12 @@ class Parser
     File.open(@src,"r") do |file|
       while line = file.gets
         next if line.strip.size == 0 or line.start_with?( "[*]Done" )
-#        puts line if DEBUG == 1
         if line.match(/^Image*/)
-          onImage( line.strip )
+          on_image( line.strip )
         elsif line.match(/^Thread*/)
-          onThread( line.strip )
+          on_thread( line.strip )
         elsif line.match(/^SYMBOL*/)
-          onSymbol( line.strip ) #unless line.match (  )
+          on_symbol( line.strip )
         end
       end
     end
@@ -239,17 +235,17 @@ class Parser
     return self
   end
 
-  def result
-#    puts "[*] #{@images.size} Loaded Images...\n"
-#    @images.each_value {|img| puts img.to_stdout}
+  def to_stdout
+    puts "[*] #{@images.size} Loaded Images...\n"
+    @images.each_value {|img| puts img.to_stdout}
     puts "[*] Threads #{@threads.size}"
     @threads.each_value {|th| puts th.to_stdout}
-    #puts "[*] Calls #{@calls.size}"
-#    puts "[*] Methods #{@methods.size}"
-#    @methods.each_value { |method| puts method.to_stdout}
+    puts "[*] Methods #{@methods.size}"
+    @methods.each_value { |method| puts method.to_stdout}
   end
 
   def xmlize ( io )
+
     io.write( "<puncture>" )
     
     io.write( "<images count=\"#{@images.size}\">" )
@@ -275,6 +271,11 @@ end
 
 if $0 == __FILE__
   parser = Parser.new($config['LOG_FILE']).parse
-  parser.result
-  File.open("puncture.xml","w") { |file| parser.xmlize( file )}
+  #parser.to_stdout
+  File.open("puncture.xml","w") { |file| 
+    file.write("<?xml version=\"1.0\" ?>\n")
+    parser.xmlize( file )
+  }
+  
+  puts "[*] Done."
 end
