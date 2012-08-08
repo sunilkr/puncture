@@ -1,10 +1,13 @@
 #!/usr/bin/env ruby
-require 'config'
+require './config'
 
 class AppImage
+  
   attr_accessor :name, :path, :base, :size, :oep
+  
   def initialize(path, base, size, oep)
-    @path, @base, @size, @oep = path, size, base, oep
+    @path, @base, @size, @oep = path, base, size, oep
+    
     @name = @path[@path.rindex('\\')+1..-1].upcase
   end
 
@@ -23,18 +26,21 @@ class AppImage
     str += "\n"
   end
   
-  def to_xml
+  def to_xml( less = [] )
     str = "<image name=\"#{@name}\">\n"
     str += "<path>#{@path}</path>\n"
     str += "<base>#{@base}</base>\n"
     str += "<mapped-size>#{@size}</mapped-size>\n"
     str += "<entry-point>#{@oep}</entry-point>\n"
+  
     if @methods
       str += "<methods>"
-      @methods.each_pair { |name,method| str += "<method addres=\"#{method.address}\">#{@name}</method>\n"}
+      @methods.each_pair { |name,method| str += "<method address=\"#{method.address}\">#{name}</method>\n"}
       str += "</methods>"
     end
+
     str += "</image>"
+  end
 end
 
 class AppMethod
@@ -57,36 +63,42 @@ class AppMethod
     str += "\n"
   end
   
-  def to_xml
-    str = "<method>"
-    
+  def to_xml( less = [] )
+    "<method call-count=\"#{@count}\">#{@name}</method>"
   end
 end
 
 class AppThread
-  attr_reader :methods, :id
+  
+  attr_reader :calls, :id
   
   def initialize( id )
     @id = id
-    @methods = []
+    @calls = []
   end
 
   def called( call )
-#    ( @methods[call.name] ||= [] ) << call
-    @methods << call
+    @calls << call
   end
 
   def to_stdout
     str = "Thread: 0x#{@id.to_s(16)}\n"
     str += "\tCalled:\n"
-#    @methods.each_key { |name| str += "\t #{name}\n"}
-    @methods.each { |call| str += call.to_stdout}
+    @calls.each { |call| str += call.to_stdout}
     str += "\n"
+  end
+
+  def to_xml( less = [] )
+    xml = "<thread id=\"#{@id.to_s(16)}\" calls=\"#{@calls.size}\">"
+    @calls.each_index { |i| xml += @calls[i].to_xml}
+    xml += "</thread>"
   end
 end
 
 class AppCall
+  
   attr_accessor :name, :arguments, :thread, :ret
+
   def initialize( name, arguments, thread)
     @name, @arguments, @thread = name, arguments, thread
     @ret = nil
@@ -99,13 +111,39 @@ class AppCall
   def to_stdout
     str = "#{@name}\n"
     str += "\tThread: 0x#{@thread.id.to_s(16)}\n"
+    
     if @arguments && @arguments.size > 0
       str += "\tInput Parameters: #{@arguments.to_s}\n"
     end
+    
     if @ret && @ret.size>0
       str += "\t Returned: #{@ret.to_s}\n"
     end
+
     str += "\n"
+  end
+
+  def to_xml( less = [] )
+    str = "<call thread=\"#{@thread.id.to_s(16)}\">"
+    str += "<name>#{@name}</name>"
+
+    if @arguments && @arguments.size > 0
+      str += "<call-params>"
+      @arguments.each_pair {|name, value| str += "<param name=\"#{name}\" value=\"#{value}\"/>"}
+      str += "</call-params>"
+    else
+      str += "<call-params/>"
+    end
+
+    if @ret && @ret.size > 0
+      str += "<return-params>"
+      @ret.each_pair {|name,value| str += "<param name=\"#{name}\" value=\"#{value}\"/>"}
+      str += "</return-params>"
+    else
+      str += "<return-params/>"
+    end
+
+    str += "</call>"
   end
 end
 
@@ -136,7 +174,7 @@ class Parser
     thr, fn_name, event, *params = data.split(DELIM)
     th_id = thr.split('=')[1].to_i(16)
 
-    @threads[th_id] = AppThread.new(th_id)
+    @threads[th_id] ||= AppThread.new(th_id)
 
     case event
 
@@ -150,7 +188,7 @@ class Parser
         puts "[!] Unexpected #{data}"
       else
         @last_call[th_id].returned( __params_hash(params) )
-        @threads[th_id].called( @last_call[th_id].dup )
+        @threads[th_id].called( @last_call[th_id] )
       end
     end
   end
@@ -210,9 +248,33 @@ class Parser
 #    puts "[*] Methods #{@methods.size}"
 #    @methods.each_value { |method| puts method.to_stdout}
   end
+
+  def xmlize ( io )
+    io.write( "<puncture>" )
+    
+    io.write( "<images count=\"#{@images.size}\">" )
+    @images.each_value {|image| io.write( image.to_xml )}
+    io.write( "</images>" )
+
+    io.write( "<methods count=\"#{@methods.size}\">" )
+    @methods.each_value { |method| io.write( method.to_xml )}
+    io.write( "</methods>" )
+
+    io.write( "<calls count=\"#{@calls.size}\">")
+    @calls.each { |call| io.write( call.to_xml )}
+    io.write( "</calls>" )
+
+    io.write( "<threads count=\"#{@threads.size}\">" )
+    @threads.each_value {|thrd| io.write( thrd.to_xml )}
+    io.write( "</threads>" )
+
+    io.write( "</puncture>" )
+    io.flush
+  end
 end
 
 if $0 == __FILE__
   parser = Parser.new($config['LOG_FILE']).parse
   parser.result
+  File.open("puncture.xml","w") { |file| parser.xmlize( file )}
 end
