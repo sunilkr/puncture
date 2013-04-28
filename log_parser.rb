@@ -33,20 +33,20 @@ class AppImage
     str += "<mapped-size>#{@size}</mapped-size>\n"
     str += "<entry-point>#{@oep}</entry-point>\n"
   
-    if @methods
-      str += "<methods>"
-      @methods.each_pair { |name,method| str += "<method address=\"#{method.address}\">#{name}</method>\n"}
-      str += "</methods>"
-    end
+#    if @methods
+#      str += "<methods>"
+#      @methods.each_pair { |name,method| str += "<method address=\"#{method.address}\">#{name}</method>\n"}
+#      str += "</methods>"
+#    end
 
     str += "</image>"
   end
 end
 
 class AppMethod
-  attr_accessor :name, :address, :count, :calls
-  def initialize( name, address )
-    @name, @address = name, address
+  attr_accessor :image, :name, :address, :count, :calls
+  def initialize( image, name, address )
+    @image, @name, @address = image, name, address
     @count = 0
     @calls = []
   end
@@ -64,7 +64,10 @@ class AppMethod
   end
   
   def to_xml( less = [] )
-    "<method call-count=\"#{@count}\">#{@name}</method>"
+    "<method call-count=\"#{@count}\">"+
+      "<name>#{@name}</name>"+
+      "<image>#{@image}</image>"+
+    "</method>"
   end
 end
 
@@ -207,7 +210,7 @@ class Parser
 
   def on_symbol( data )
     cmd, img, fn_name, addr = data.split(DELIM)
-    method = AppMethod.new(fn_name,addr.split('@')[1])
+    method = AppMethod.new(img, fn_name, addr.split('@')[1])
 
     if @images.key?(img)
       @images[img].add_method(method)
@@ -245,7 +248,6 @@ class Parser
   end
 
   def xmlize ( io )
-
     io.write( "<puncture>" )
     
     io.write( "<images count=\"#{@images.size}\">" )
@@ -273,7 +275,7 @@ if $0 == __FILE__
   parser = Parser.new($config['LOG_FILE']).parse
   #parser.to_stdout
   File.open("puncture.xml","w") { |file| 
-    file.write("<?xml version=\"1.0\" ?>\n")
+    file.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
     parser.xmlize( file )
   }
   
